@@ -1,0 +1,43 @@
+version: "3.3"
+
+services:
+  # ── Internal Postgres with pgvector ───────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cs_nl2sql_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cs_nl2sql
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cs_nl2sql"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Application ───────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cs_nl2sql_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      INTERNAL_DB_HOST: postgres
+      INTERNAL_DB_PORT: 5432
+    depends_on:
+      - postgres
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
