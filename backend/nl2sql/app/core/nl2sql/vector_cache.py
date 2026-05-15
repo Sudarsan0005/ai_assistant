@@ -97,6 +97,7 @@ class VectorCache:
 
         except Exception as exc:
             logger.warning("Vector cache lookup failed: %s", exc)
+            self.db.rollback()
             return []
 
     def get_exact_match(self, embedding: List[float]) -> Optional[str]:
@@ -110,12 +111,15 @@ class VectorCache:
 
         best = results[0]
         if best.similarity >= self.HARD_REUSE_THRESHOLD:
-            # Bump usage counter
-            self.db.execute(
-                text("UPDATE query_cache SET usage_count = usage_count + 1, last_used_at = NOW() WHERE id = :id"),
-                {"id": best.cache_id},
-            )
-            self.db.commit()
+            try:
+                self.db.execute(
+                    text("UPDATE query_cache SET usage_count = usage_count + 1, last_used_at = NOW() WHERE id = :id"),
+                    {"id": best.cache_id},
+                )
+                self.db.commit()
+            except Exception as exc:
+                logger.warning("Vector cache usage counter update failed: %s", exc)
+                self.db.rollback()
             logger.info("Vector cache HIT — similarity=%.4f, sql=%.80s", best.similarity, best.sql_query)
             return best.sql_query
 

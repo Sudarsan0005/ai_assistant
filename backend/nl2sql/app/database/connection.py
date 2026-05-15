@@ -6,7 +6,7 @@ SQLAlchemy engine + session factory for the internal Postgres DB.
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import get_settings
@@ -48,9 +48,25 @@ def db_session() -> Generator[Session, None, None]:
 
 
 def init_db():
-    """Create all tables and enable pgvector extension."""
+    """Create all tables and rebuild legacy app schema when detected."""
     from app.models.tables import Base
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+
+        inspector = inspect(conn)
+        table_names = set(inspector.get_table_names())
+        customer_columns = {col["name"] for col in inspector.get_columns("customers")} if "customers" in table_names else set()
+        legacy_detected = (
+            "data_sources" in table_names
+            or "sync_jobs" in table_names
+            or ("customers" in table_names and "customer_id" not in customer_columns)
+        )
+
+        if legacy_detected:
+            Base.metadata.drop_all(bind=conn)
+            conn.execute(text("DROP TABLE IF EXISTS data_sources CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS sync_jobs CASCADE"))
+
         conn.commit()
     Base.metadata.create_all(bind=engine)

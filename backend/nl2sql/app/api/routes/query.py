@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @router.post(
     "",
     response_model=QueryResponse,
-    summary="Ask a natural language question about customers / orders",
+    summary="Ask a natural language question about the e-commerce warehouse",
     responses={500: {"model": ErrorResponse}},
 )
 def ask_question(
@@ -38,19 +38,23 @@ def ask_question(
     **Session context**: pass the same `session_id` across multiple calls
     to enable follow-up questions that reference previous answers.
 
+    **Customer scope**: pass `customer_id` for chatbot sessions tied to a
+    logged-in customer. Queries that touch customer-owned data are restricted
+    to that customer.
+
     **Examples of supported questions**:
-    - "Show me all VIP customers in New York"
-    - "How many orders were placed last month?"
-    - "What is the total revenue from John Smith's account?"
-    - "List the top 10 customers by lifetime value"
-    - "Show cancelled orders from this week"
-    - "Which products were ordered most in Q1 2024?"
+    - "Show the top 10 customers by total order value"
+    - "Which sellers have the highest average product rating?"
+    - "List low-stock variants for active products"
+    - "How many delivered orders were paid by UPI last month?"
+    - "Show products with the most wishlist adds"
     """
     try:
         engine = NL2SQLEngine(db=db)
         result = engine.query(
             question=request.question,
             session_id=request.session_id,
+            customer_id=str(request.customer_id) if request.customer_id else None,
             max_retries=request.max_retries,
         )
 

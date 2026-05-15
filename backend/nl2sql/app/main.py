@@ -5,11 +5,7 @@ FastAPI application factory.
 
 Startup sequence:
   1. Initialize database (create tables, enable pgvector extension)
-  2. Register all API routers
-  3. Start background sync scheduler
-
-Shutdown sequence:
-  1. Stop background scheduler
+  2. Register API routers
 """
 
 import logging
@@ -18,8 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import customers, datasource, health, query, sync
-from app.core.sync.scheduler import start_scheduler, stop_scheduler
+from app.api.routes import health, query
 from app.database.connection import init_db
 from config.settings import get_settings
 
@@ -33,16 +28,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup ──────────────────────────────────────────────────────────────
     logger.info("Starting %s [%s]", settings.app_name, settings.app_env)
     init_db()
     logger.info("Database initialized")
-    start_scheduler()
 
     yield
-
-    # ── Shutdown ─────────────────────────────────────────────────────────────
-    stop_scheduler()
     logger.info("Application shutdown complete")
 
 
@@ -51,7 +41,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         description=(
             "Customer Support NL2SQL — convert natural language questions about "
-            "customers and orders into SQL and return human-readable answers."
+            "an e-commerce warehouse into SQL and return structured answers."
         ),
         version="1.0.0",
         lifespan=lifespan,
@@ -71,9 +61,6 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
     app.include_router(query.router)
-    app.include_router(datasource.router)
-    app.include_router(sync.router)
-    app.include_router(customers.router)
 
     return app
 
