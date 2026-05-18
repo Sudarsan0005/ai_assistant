@@ -1,10 +1,11 @@
 """
-LLM Service for Answer Generation
-Supports OpenAI, Anthropic, and other providers via LiteLLM
+LangChain-based LLM service.
 """
-from typing import List, Dict, Any, Optional
-import logging
 from dataclasses import dataclass
+import logging
+from typing import Optional
+
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import settings
 
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LLMResponse:
-    """LLM response with metadata"""
+    """LLM response with metadata."""
+
     answer: str
     model: str
     tokens_used: int
@@ -21,249 +23,136 @@ class LLMResponse:
 
 
 class LLMService:
-    """LLM service for answer generation"""
-    
+    """LLM service with env-driven provider selection."""
+
     def __init__(
         self,
         provider: str = "openai",
-        model: str = "gpt-4",
+        model: str = "gpt-4o-mini",
         temperature: float = 0.1,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
     ):
         self.provider = provider
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        
-        # Initialize based on provider
+        self.client = self._build_chat_model()
+
+    def _build_chat_model(self):
+        """Create the configured LangChain chat model."""
+        provider = self.provider.lower()
+
         if provider == "openai":
-            self._init_openai()
-        elif provider == "anthropic":
-            self._init_anthropic()
-        else:
-            self._init_litellm()
-    
-    def _init_openai(self):
-        """Initialize OpenAI client"""
-        try:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-            logger.info("OpenAI client initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI: {e}")
-            raise
-    
-    def _init_anthropic(self):
-        """Initialize Anthropic client"""
-        try:
-            from anthropic import Anthropic
-            self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            logger.info("Anthropic client initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize Anthropic: {e}")
-            raise
-    
-    def _init_litellm(self):
-        """Initialize LiteLLM for other providers"""
-        try:
-            import litellm
-            self.client = litellm
-            logger.info("LiteLLM initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize LiteLLM: {e}")
-            raise
-    
+            from langchain_openai import ChatOpenAI
+
+            return ChatOpenAI(
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL,
+            )
+
+        if provider == "openai_compatible":
+            from langchain_openai import ChatOpenAI
+
+            return ChatOpenAI(
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                api_key=settings.OPENAI_COMPATIBLE_API_KEY or settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL,
+            )
+
+        if provider == "anthropic":
+            from langchain_anthropic import ChatAnthropic
+
+            return ChatAnthropic(
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            )
+
+        if provider == "ollama":
+            from langchain_ollama import ChatOllama
+
+            return ChatOllama(
+                model=self.model,
+                temperature=self.temperature,
+                num_predict=self.max_tokens,
+                base_url=settings.OLLAMA_BASE_URL,
+            )
+
+        if provider == "nvidia":
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+            return ChatNVIDIA(
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                api_key=settings.NVIDIA_API_KEY,
+            )
+
+        raise ValueError(
+            "Unsupported LLM_PROVIDER. Use one of: "
+            "openai, openai_compatible, anthropic, ollama, nvidia."
+        )
+
     def generate_answer(
         self,
         query: str,
         context: str,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> LLMResponse:
-        """Generate answer using LLM"""
-        if self.provider == "openai":
-            return self._generate_openai(query, context, system_prompt)
-        elif self.provider == "anthropic":
-            return self._generate_anthropic(query, context, system_prompt)
-        else:
-            return self._generate_litellm(query, context, system_prompt)
-    
-    def _generate_openai(
-        self,
-        query: str,
-        context: str,
-        system_prompt: Optional[str]
-    ) -> LLMResponse:
-        """Generate answer using OpenAI"""
-        messages = []
-        
-        # System prompt
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        else:
-            messages.append({
-                "role": "system",
-                "content": self._get_default_system_prompt()
-            })
-        
-        # User message with context
-        user_message = self._format_user_message(query, context)
-        messages.append({"role": "user", "content": user_message})
-        
-        # Generate
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
-        
+        """Generate an answer with the configured model."""
+        messages = [
+            SystemMessage(content=system_prompt or self._get_default_system_prompt()),
+            HumanMessage(content=self._format_user_message(query, context)),
+        ]
+
+        response = self.client.invoke(messages)
+        usage = getattr(response, "usage_metadata", {}) or {}
+        input_tokens = int(usage.get("input_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens))
+        response_metadata = getattr(response, "response_metadata", {}) or {}
+
         return LLMResponse(
-            answer=response.choices[0].message.content,
-            model=response.model,
-            tokens_used=response.usage.total_tokens,
-            finish_reason=response.choices[0].finish_reason
+            answer=response.content if isinstance(response.content, str) else str(response.content),
+            model=response_metadata.get("model_name", self.model),
+            tokens_used=total_tokens,
+            finish_reason=response_metadata.get("finish_reason", "completed"),
         )
-    
-    def _generate_anthropic(
-        self,
-        query: str,
-        context: str,
-        system_prompt: Optional[str]
-    ) -> LLMResponse:
-        """Generate answer using Anthropic"""
-        # Format message
-        user_message = self._format_user_message(query, context)
-        
-        # Generate
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            system=system_prompt or self._get_default_system_prompt(),
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
-        )
-        
-        return LLMResponse(
-            answer=response.content[0].text,
-            model=response.model,
-            tokens_used=response.usage.input_tokens + response.usage.output_tokens,
-            finish_reason=response.stop_reason
-        )
-    
-    def _generate_litellm(
-        self,
-        query: str,
-        context: str,
-        system_prompt: Optional[str]
-    ) -> LLMResponse:
-        """Generate answer using LiteLLM"""
-        messages = []
-        
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        else:
-            messages.append({
-                "role": "system",
-                "content": self._get_default_system_prompt()
-            })
-        
-        user_message = self._format_user_message(query, context)
-        messages.append({"role": "user", "content": user_message})
-        
-        response = self.client.completion(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
-        
-        return LLMResponse(
-            answer=response.choices[0].message.content,
-            model=response.model,
-            tokens_used=response.usage.total_tokens,
-            finish_reason=response.choices[0].finish_reason
-        )
-    
+
     def _get_default_system_prompt(self) -> str:
-        """Get default system prompt for RAG"""
-        return """You are a helpful AI assistant that answers questions based on provided context.
+        """Default system prompt for grounded answering."""
+        return (
+            "You are a grounded retrieval assistant.\n"
+            "Answer using only the provided context.\n"
+            "If the answer is not supported by the context, say that clearly.\n"
+            "Prefer precise, source-backed answers and preserve citation markers."
+        )
 
-Instructions:
-1. Answer the question using ONLY the information from the provided context
-2. Be accurate and cite specific information when possible
-3. If the context doesn't contain enough information to answer, say so clearly
-4. Keep answers concise but comprehensive
-5. Reference the citation numbers [0], [1], etc. when using specific information from the context
-6. Do not make up information that's not in the context
-
-Format your response clearly and professionally."""
-    
     def _format_user_message(self, query: str, context: str) -> str:
-        """Format user message with query and context"""
-        return f"""Context:
-{context}
-
-Question: {query}
-
-Please provide a detailed answer based on the context above. Use citation numbers [0], [1], etc. to reference specific information from the context."""
+        """Build the user prompt payload."""
+        return (
+            f"Context:\n{context}\n\n"
+            f"Question: {query}\n\n"
+            "Answer the question using the context above. "
+            "Use citation numbers like [0], [1] when referring to specific evidence."
+        )
 
 
 class PromptTemplates:
-    """Collection of prompt templates for different scenarios"""
-    
-    @staticmethod
-    def qa_prompt(query: str, context: str) -> str:
-        """Question answering prompt"""
-        return f"""Based on the following context, please answer the question.
+    """Collection of prompt templates for RAG scenarios."""
 
-Context:
-{context}
-
-Question: {query}
-
-Answer:"""
-    
-    @staticmethod
-    def summarization_prompt(text: str) -> str:
-        """Summarization prompt"""
-        return f"""Please provide a comprehensive summary of the following text:
-
-{text}
-
-Summary:"""
-    
-    @staticmethod
-    def multihop_qa_prompt(query: str, context: str) -> str:
-        """Multi-hop question answering prompt"""
-        return f"""You are answering a complex question that may require combining information from multiple sources.
-
-Context:
-{context}
-
-Question: {query}
-
-Please provide a detailed answer that:
-1. Combines relevant information from different sources
-2. Shows the reasoning chain
-3. Cites specific sources using [citation_id]
-
-Answer:"""
-    
     @staticmethod
     def citation_aware_prompt() -> str:
-        """System prompt that emphasizes citations"""
-        return """You are a helpful assistant that provides accurate answers with proper citations.
-
-CRITICAL INSTRUCTIONS:
-- Always cite your sources using [0], [1], [2] format
-- Each factual claim should be followed by its citation
-- If multiple sources support a claim, cite all relevant ones
-- Only use information from the provided context
-- If the context doesn't contain the answer, say "I don't have enough information"
-- Be precise and accurate
-
-Example:
-"The company was founded in 2020 [0]. It operates in 15 countries [1,2] and has 500 employees [2]."
-"""
+        """Prompt emphasizing grounded, cited answers."""
+        return (
+            "You are a helpful assistant that answers only from retrieved context.\n"
+            "Do not invent facts.\n"
+            "Keep answers concise but complete.\n"
+            "Use the citation identifiers already present in the context."
+        )

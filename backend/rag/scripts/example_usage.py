@@ -26,11 +26,10 @@ def example_basic_usage():
     # Initialize pipeline
     print("\n1. Initializing RAG Pipeline...")
     pipeline = RAGPipeline(
-        milvus_host="localhost",
-        milvus_port=19530,
+        qdrant_url="http://localhost:6333",
         embedding_model="BAAI/bge-base-en-v1.5",
         llm_provider="openai",
-        llm_model="gpt-4"
+        llm_model="gpt-4o-mini"
     )
     print("✓ Pipeline initialized")
     
@@ -314,6 +313,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nError: {e}")
         print("\nNote: Make sure to:")
-        print("1. Start Milvus: docker-compose up -d")
+        print("1. Start Qdrant: docker-compose up -d qdrant")
         print("2. Set API keys in .env file")
         print("3. Place sample documents in ./sample_docs/")

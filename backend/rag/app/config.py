@@ -1,61 +1,70 @@
 """
-Application Configuration
+Application configuration.
 """
-from pydantic_settings import BaseSettings
 from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings"""
-    
+    """Application settings loaded from environment variables."""
+
     # Application
     APP_NAME: str = "Advanced RAG System"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
-    
-    # Milvus Configuration
-    MILVUS_HOST: str = "localhost"
-    MILVUS_PORT: int = 19530
-    MILVUS_USER: str = ""
-    MILVUS_PASSWORD: str = ""
-    MILVUS_DB_NAME: str = "rag_database"
-    MILVUS_COLLECTION_NAME: str = "document_chunks"
-    
-    # Embedding Configuration
+
+    # Qdrant configuration
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION_NAME: str = "document_chunks"
+    QDRANT_PREFER_GRPC: bool = False
+
+    # Embedding configuration
     EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"
-    EMBEDDING_DIMENSION: int = 768
     EMBEDDING_BATCH_SIZE: int = 32
-    
-    # Chunking Configuration
+
+    # Chunking configuration
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
-    
-    # Retrieval Configuration
+
+    # Retrieval configuration
     TOP_K: int = 10
     SIMILARITY_THRESHOLD: float = 0.3
-    VECTOR_WEIGHT: float = 0.7
-    KEYWORD_WEIGHT: float = 0.3
-    
-    # LLM Configuration
-    LLM_PROVIDER: str = "openai"  # openai, anthropic, litellm
-    LLM_MODEL: str = "gpt-4"
+    VECTOR_WEIGHT: float = 0.75
+    KEYWORD_WEIGHT: float = 0.25
+    HYBRID_CANDIDATE_MULTIPLIER: int = 3
+
+    # LLM configuration
+    LLM_PROVIDER: str = "openai"  # openai|anthropic|ollama|nvidia|openai_compatible
+    LLM_MODEL: str = "gpt-4o-mini"
     LLM_TEMPERATURE: float = 0.1
     LLM_MAX_TOKENS: int = 2000
+
     OPENAI_API_KEY: Optional[str] = None
+    OPENAI_BASE_URL: Optional[str] = None
+
     ANTHROPIC_API_KEY: Optional[str] = None
-    
-    # Vision Processing
+
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    NVIDIA_API_KEY: Optional[str] = None
+
+    OPENAI_COMPATIBLE_API_KEY: Optional[str] = None
+
+    # Vision processing
     ENABLE_VISION: bool = True
     OCR_LANGUAGE: str = "en"
     VISION_MODEL: str = "paddleocr"
-    
-    # Citation Configuration
+
+    # Citation configuration
     CITATION_THRESHOLD: float = 0.63
     MAX_CITATIONS_PER_SENTENCE: int = 4
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+    }
 
 
 settings = Settings()

@@ -1,19 +1,22 @@
 """
-API Request/Response Models
+API request and response models.
 """
 from typing import List, Optional
+
 from pydantic import BaseModel
 
 
 class QueryRequest(BaseModel):
-    """Query request model"""
+    """Query request model."""
+
     question: str
     doc_ids: Optional[List[str]] = None
     use_citations: bool = True
 
 
 class QueryResponse(BaseModel):
-    """Query response model"""
+    """Query response model."""
+
     query: str
     answer: str
     answer_with_citations: str
@@ -25,7 +28,8 @@ class QueryResponse(BaseModel):
 
 
 class DocumentResponse(BaseModel):
-    """Document response model"""
+    """Document response model."""
+
     doc_id: str
     filename: str
     total_chunks: int
@@ -33,7 +37,8 @@ class DocumentResponse(BaseModel):
 
 
 class DocumentUploadResponse(BaseModel):
-    """Document upload response"""
+    """Document upload response."""
+
     doc_id: str
     filename: str
     file_size: int
@@ -43,15 +48,19 @@ class DocumentUploadResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response"""
+    """Health check response."""
+
     status: str
     version: str
-    milvus_connected: bool
-    collections_initialized: bool
+    vector_store: str
+    vector_store_connected: bool
+    collection_initialized: bool
+    llm_provider: str
 
 
 class ErrorResponse(BaseModel):
-    """Error response model"""
+    """Error response model."""
+
     error: str
     detail: str
     status_code: int

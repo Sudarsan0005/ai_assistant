@@ -201,7 +201,7 @@ def run_all_tests():
         print(f"\n⚠️  {total - passed} test(s) failed")
         print("\nNote: Some tests may fail if:")
         print("  - Dependencies are not fully installed")
-        print("  - Milvus is not running")
+        print("  - Qdrant is not running")
         print("  - API server is not running")
         print("  - API keys are not configured")
 
